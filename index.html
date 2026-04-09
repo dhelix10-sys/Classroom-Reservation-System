@@ -115,6 +115,7 @@
                                 <th class="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">시간</th>
                                 <th class="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">예약자</th>
                                 <th class="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">등록일시</th>
+                                <th class="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">관리</th>
                             </tr>
                         </thead>
                         <tbody id="historyTableBody" class="divide-y divide-slate-100 text-sm">
@@ -274,6 +275,9 @@
                     <td class="p-4 font-bold text-slate-800">${res.time}</td>
                     <td class="p-4 text-slate-500">${res.name}</td>
                     <td class="p-4 text-right text-[11px] text-slate-400">${formattedDate}</td>
+                    <td class="p-4 text-center">
+                        <button onclick="cancelReservation('${res.createdAt}')" class="px-3 py-1 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition-colors border border-red-100">취소</button>
+                    </td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -293,7 +297,7 @@
                     time: time,
                     date: datePicker.value,
                     name: name,
-                    createdAt: now.toISOString()
+                    createdAt: now.toISOString() + Math.random().toString(36).substr(2, 5) // 고유 ID용 난수 추가
                 });
             });
 
@@ -307,6 +311,18 @@
             updateBookBtn();
             renderGrid();
             renderHistory();
+        };
+
+        // 예약 취소 함수 추가
+        window.cancelReservation = (createdAt) => {
+            if(confirm("해당 예약을 취소하시겠습니까?")) {
+                currentReservations = currentReservations.filter(res => res.createdAt !== createdAt);
+                localStorage.setItem('microBioReservations', JSON.stringify(currentReservations));
+                
+                alert("취소 처리되었습니다.");
+                if(selectedRoom) renderGrid(); // 예약 현황 캘린더 업데이트
+                renderHistory(); // 하단 목록 업데이트
+            }
         };
 
         // 초기 히스토리 렌더링
