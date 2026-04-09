@@ -29,8 +29,8 @@
                 <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">강의실 예약</h1>
                 <p class="text-slate-500 mt-1">미생물분자생명과학과 실시간 예약 서비스</p>
             </div>
-            <div id="auth-status" class="text-xs font-medium px-3 py-1 bg-green-100 text-green-700 rounded-full">
-                실시간 데이터 동기화 중
+            <div id="auth-status" class="text-xs font-medium px-3 py-1 bg-blue-100 text-blue-700 rounded-full">
+                로컬 저장소 연결됨
             </div>
         </header>
 
@@ -129,11 +129,7 @@
         </div>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-        import { getFirestore, collection, doc, setDoc, addDoc, onSnapshot, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-
+    <script>
         // 수업 시간표
         const classData = {
             "103호": { 2: ["09:00", "10:00", "11:00", "15:00", "16:00"], 3: ["10:00", "11:00", "13:00", "14:00", "15:00"], 4: ["10:00", "11:00", "13:00", "14:00", "15:00"], 5: ["13:00", "14:00", "15:00", "16:00"] },
@@ -143,29 +139,11 @@
 
         const timeSlots = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"];
 
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'micro-bio-lab-res';
-
-        let user = null;
+        // Firebase 대신 로컬 스토리지 데이터 사용
         let selectedRoom = "";
         let selectedTimes = [];
-        let currentReservations = [];
+        let currentReservations = JSON.parse(localStorage.getItem('microBioReservations')) || [];
         let historyFilter = "전체";
-
-        const initAuth = async () => {
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-                await signInAnonymously(auth);
-            }
-            onAuthStateChanged(auth, (u) => {
-                user = u;
-                if(user) listenToReservations();
-            });
-        };
 
         const datePicker = document.getElementById('datePicker');
         const todayStr = new Date().toISOString().split('T')[0];
@@ -263,15 +241,6 @@
             });
         }
 
-        function listenToReservations() {
-            const q = collection(db, 'artifacts', appId, 'public', 'data', 'reservations');
-            onSnapshot(q, (snapshot) => {
-                currentReservations = snapshot.docs.map(doc => doc.data());
-                renderHistory();
-                if(selectedRoom) renderGrid();
-            }, (err) => console.error("Firestore Error:", err));
-        }
-
         function renderHistory() {
             const tbody = document.getElementById('historyTableBody');
             const noHistory = document.getElementById('no-history-msg');
@@ -283,7 +252,7 @@
             }
 
             // 최신순 정렬
-            filtered.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+            filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
             if(filtered.length === 0) {
                 noHistory.classList.remove('hidden');
@@ -296,8 +265,8 @@
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-slate-50 transition-colors";
                 
-                const dateObj = res.createdAt?.toDate();
-                const formattedDate = dateObj ? `${dateObj.getMonth()+1}/${dateObj.getDate()} ${dateObj.getHours()}:${String(dateObj.getMinutes()).padStart(2, '0')}` : '-';
+                const dateObj = new Date(res.createdAt);
+                const formattedDate = !isNaN(dateObj) ? `${dateObj.getMonth()+1}/${dateObj.getDate()} ${dateObj.getHours()}:${String(dateObj.getMinutes()).padStart(2, '0')}` : '-';
 
                 tr.innerHTML = `
                     <td class="p-4 font-medium text-slate-600">${res.date}</td>
@@ -310,38 +279,38 @@
             });
         }
 
-        document.getElementById('bookBtn').onclick = async () => {
+        document.getElementById('bookBtn').onclick = () => {
             const name = document.getElementById('userName').value.trim();
             if(!name) {
                 alert("예약자 성함을 입력해주세요.");
                 return;
             }
 
-            try {
-                const promises = selectedTimes.map(time => {
-                    return addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'reservations'), {
-                        room: selectedRoom,
-                        time: time,
-                        date: datePicker.value,
-                        name: name,
-                        createdAt: serverTimestamp()
-                    });
+            const now = new Date();
+            selectedTimes.forEach(time => {
+                currentReservations.push({
+                    room: selectedRoom,
+                    time: time,
+                    date: datePicker.value,
+                    name: name,
+                    createdAt: now.toISOString()
                 });
+            });
 
-                await Promise.all(promises);
-                alert("성공적으로 예약되었습니다.");
-                
-                document.getElementById('userName').value = "";
-                selectedTimes = [];
-                updateBookBtn();
-                renderGrid();
-            } catch (e) {
-                console.error(e);
-                alert("예약 중 오류가 발생했습니다.");
-            }
+            // 데이터를 브라우저에 저장
+            localStorage.setItem('microBioReservations', JSON.stringify(currentReservations));
+            
+            alert("성공적으로 예약되었습니다.");
+            
+            document.getElementById('userName').value = "";
+            selectedTimes = [];
+            updateBookBtn();
+            renderGrid();
+            renderHistory();
         };
 
-        initAuth();
+        // 초기 히스토리 렌더링
+        renderHistory();
     </script>
 </body>
 </html>
