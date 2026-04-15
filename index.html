@@ -1,149 +1,33 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>강의실 예약 시스템</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&display=swap');
-        body { font-family: 'Pretendard', sans-serif; background-color: #f3f4f6; }
-        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
-        .slot-booked { background-color: #fee2e2; color: #ef4444; cursor: not-allowed; border-color: #fca5a5; }
-        .slot-class { background-color: #f1f5f9; color: #94a3b8; cursor: not-allowed; border-color: #e2e8f0; }
-        .slot-available { background-color: #ffffff; color: #1e293b; cursor: pointer; border-color: #e2e8f0; }
-        .slot-available:hover { border-color: #6366f1; background-color: #f5f3ff; }
-        .slot-selected { background-color: #6366f1; color: white; border-color: #6366f1; transform: scale(1.05); }
-        
-        /* 테이블 스크롤바 숨기기 */
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    </style>
-</head>
-<body class="min-h-screen pb-20">
+<script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, query, orderBy, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-    <div class="max-w-5xl mx-auto px-4 pt-8">
-        <!-- Header -->
-        <header class="mb-8 flex items-center justify-between">
-            <div>
-                <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">강의실 예약</h1>
-                <p class="text-slate-500 mt-1">미생물분자생명과학과 실시간 예약 서비스</p>
-            </div>
-            <div id="auth-status" class="text-xs font-medium px-3 py-1 bg-blue-100 text-blue-700 rounded-full">
-                로컬 저장소 연결됨
-            </div>
-        </header>
+        // 1. 사용자님의 파이어베이스 연결 열쇠
+        const firebaseConfig = {
+            apiKey: "AIzaSyAO2ZYMNnjx0wCBuA3nXhfBSUSmxi3k5yQ",
+            authDomain: "classroom-reservation-b5062.firebaseapp.com",
+            projectId: "classroom-reservation-b5062",
+            storageBucket: "classroom-reservation-b5062.firebasestorage.app",
+            messagingSenderId: "903563560410",
+            appId: "1:903563560410:web:5b8bdbd031b8b8d3586ce3",
+            measurementId: "G-23S1686YXS"
+        };
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
-            <!-- Sidebar: Selection -->
-            <div class="lg:col-span-1 space-y-6">
-                <div class="glass p-6 rounded-3xl shadow-sm border border-slate-200">
-                    <label class="block text-sm font-bold text-slate-700 mb-2">1. 날짜 선택</label>
-                    <input type="date" id="datePicker" class="w-full p-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none transition-all cursor-pointer">
-                </div>
+        // 2. 파이어베이스 초기화
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
 
-                <div class="glass p-6 rounded-3xl shadow-sm border border-slate-200">
-                    <label class="block text-sm font-bold text-slate-700 mb-2">2. 강의실 선택</label>
-                    <div class="space-y-2" id="roomSelector">
-                        <button onclick="setRoom('103호')" class="room-btn w-full p-3 text-left rounded-xl border border-slate-200 hover:bg-slate-50 transition-all font-medium" data-room="103호">103호 (일반강의실)</button>
-                        <button onclick="setRoom('108호')" class="room-btn w-full p-3 text-left rounded-xl border border-slate-200 hover:bg-slate-50 transition-all font-medium" data-room="108호">108호 (일반강의실)</button>
-                        <button onclick="setRoom('201호')" class="room-btn w-full p-3 text-left rounded-xl border border-slate-200 hover:bg-slate-50 transition-all font-medium" data-room="201호">201호 (세미나실)</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Main: Time Slots -->
-            <div class="lg:col-span-2 space-y-6">
-                <div class="glass p-8 rounded-3xl shadow-sm border border-slate-200 min-h-[450px] flex flex-col">
-                    <div id="no-selection" class="flex-grow flex flex-col items-center justify-center text-slate-400 space-y-4 py-20">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2-2v12a2 2 0 002 2z" />
-                        </svg>
-                        <p class="font-medium text-lg text-center">강의실을 선택하면<br>예약 가능한 시간을 확인할 수 있습니다.</p>
-                    </div>
-
-                    <div id="selection-ui" class="hidden flex flex-col h-full">
-                        <div class="mb-6 flex justify-between items-end">
-                            <div>
-                                <h2 id="selected-info" class="text-2xl font-bold text-slate-800">예약 현황</h2>
-                                <p id="selected-date-display" class="text-indigo-600 font-semibold"></p>
-                            </div>
-                            <span class="text-[11px] text-slate-400">* 다중 선택 가능</span>
-                        </div>
-
-                        <div class="grid grid-cols-3 sm:grid-cols-4 gap-3" id="timeGrid">
-                            <!-- Time slots generated by JS -->
-                        </div>
-
-                        <div class="mt-auto pt-8">
-                            <div class="flex gap-2 mb-4">
-                                <input type="text" id="userName" placeholder="예약자 성함 입력" class="flex-grow p-4 rounded-xl bg-slate-50 border border-slate-100 focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
-                            </div>
-                            <button id="bookBtn" class="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-[0.98] disabled:bg-slate-300 disabled:shadow-none">
-                                <span id="selectedCountText">시간을 선택해 주세요</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Reservations Table Section -->
-        <div class="space-y-4">
-            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <h3 class="text-xl font-bold text-slate-800 flex items-center gap-2">
-                    <span class="w-1.5 h-6 bg-indigo-500 rounded-full"></span>
-                    전체 예약 현황 목록
-                </h3>
-                
-                <!-- Room Tabs -->
-                <div class="flex bg-slate-200 p-1 rounded-xl w-fit">
-                    <button onclick="setHistoryFilter('전체')" class="history-tab px-4 py-1.5 rounded-lg text-sm font-semibold transition-all active-tab bg-white text-slate-800 shadow-sm" data-tab="전체">전체</button>
-                    <button onclick="setHistoryFilter('103호')" class="history-tab px-4 py-1.5 rounded-lg text-sm font-semibold transition-all text-slate-500 hover:text-slate-700" data-tab="103호">103호</button>
-                    <button onclick="setHistoryFilter('108호')" class="history-tab px-4 py-1.5 rounded-lg text-sm font-semibold transition-all text-slate-500 hover:text-slate-700" data-tab="108호">108호</button>
-                    <button onclick="setHistoryFilter('201호')" class="history-tab px-4 py-1.5 rounded-lg text-sm font-semibold transition-all text-slate-500 hover:text-slate-700" data-tab="201호">201호</button>
-                </div>
-            </div>
-
-            <div class="glass rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-slate-50 border-b border-slate-200">
-                                <th class="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">날짜</th>
-                                <th class="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">호실</th>
-                                <th class="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">시간</th>
-                                <th class="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider">예약자</th>
-                                <th class="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">등록일시</th>
-                                <th class="p-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">관리</th>
-                            </tr>
-                        </thead>
-                        <tbody id="historyTableBody" class="divide-y divide-slate-100 text-sm">
-                            <!-- JS Inject -->
-                        </tbody>
-                    </table>
-                </div>
-                <div id="no-history-msg" class="hidden py-12 text-center text-slate-400 italic">
-                    해당 조건의 예약 내역이 없습니다.
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // 수업 시간표
+        // 정규 수업 데이터
         const classData = {
             "103호": { 2: ["09:00", "10:00", "11:00", "15:00", "16:00"], 3: ["10:00", "11:00", "13:00", "14:00", "15:00"], 4: ["10:00", "11:00", "13:00", "14:00", "15:00"], 5: ["13:00", "14:00", "15:00", "16:00"] },
             "108호": { 1: ["09:00", "10:00", "13:00", "14:00"], 2: ["09:00", "10:00", "11:00", "17:00", "18:00"], 3: ["09:00", "10:00", "11:00", "13:00", "16:00", "18:00"], 4: ["09:00", "10:00", "11:00", "15:00", "16:00"], 5: ["09:00", "10:00", "11:00", "13:00"] },
             "201호": {}
         };
-
         const timeSlots = ["09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00"];
 
-        // Firebase 대신 로컬 스토리지 데이터 사용
         let selectedRoom = "";
         let selectedTimes = [];
-        let currentReservations = JSON.parse(localStorage.getItem('microBioReservations')) || [];
+        let currentReservations = []; // 서버에서 받아올 예약 데이터
         let historyFilter = "전체";
 
         const datePicker = document.getElementById('datePicker');
@@ -151,6 +35,21 @@
         datePicker.value = todayStr;
         datePicker.min = todayStr;
 
+        // 3. 실시간 데이터 동기화 (가장 중요!)
+        // 서버의 데이터가 변하면 모든 사용자의 화면이 자동으로 바뀝니다.
+        const q = query(collection(db, "reservations"), orderBy("createdAt", "desc"));
+        onSnapshot(q, (querySnapshot) => {
+            currentReservations = [];
+            querySnapshot.forEach((doc) => {
+                currentReservations.push({ id: doc.id, ...doc.data() });
+            });
+            document.getElementById('auth-status').innerText = "실시간 서버 연결됨";
+            document.getElementById('auth-status').className = "text-xs font-medium px-3 py-1 bg-green-100 text-green-700 rounded-full";
+            if(selectedRoom) renderGrid();
+            renderHistory();
+        });
+
+        // 기능 함수들을 윈도우 객체에 등록 (HTML에서 호출 가능하게 함)
         window.setRoom = (room) => {
             selectedRoom = room;
             selectedTimes = [];
@@ -252,9 +151,6 @@
                 filtered = filtered.filter(res => res.room === historyFilter);
             }
 
-            // 최신순 정렬
-            filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
             if(filtered.length === 0) {
                 noHistory.classList.remove('hidden');
                 return;
@@ -276,57 +172,49 @@
                     <td class="p-4 text-slate-500">${res.name}</td>
                     <td class="p-4 text-right text-[11px] text-slate-400">${formattedDate}</td>
                     <td class="p-4 text-center">
-                        <button onclick="cancelReservation('${res.createdAt}')" class="px-3 py-1 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition-colors border border-red-100">취소</button>
+                        <button onclick="cancelReservation('${res.id}')" class="px-3 py-1 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-xs font-bold transition-colors border border-red-100">취소</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
             });
         }
 
-        document.getElementById('bookBtn').onclick = () => {
+        // 4. 예약 데이터 서버에 저장
+        document.getElementById('bookBtn').onclick = async () => {
             const name = document.getElementById('userName').value.trim();
-            if(!name) {
-                alert("예약자 성함을 입력해주세요.");
-                return;
+            if(!name) { alert("예약자 성함을 입력해주세요."); return; }
+
+            const now = new Date().toISOString();
+            
+            try {
+                // 여러 칸을 선택했을 경우 각각 서버에 저장
+                for(const time of selectedTimes) {
+                    await addDoc(collection(db, "reservations"), {
+                        room: selectedRoom,
+                        time: time,
+                        date: datePicker.value,
+                        name: name,
+                        createdAt: now
+                    });
+                }
+                alert("성공적으로 예약되었습니다.");
+                document.getElementById('userName').value = "";
+                selectedTimes = [];
+                updateBookBtn();
+            } catch (e) {
+                alert("예약 중 오류가 발생했습니다: " + e.message);
             }
-
-            const now = new Date();
-            selectedTimes.forEach(time => {
-                currentReservations.push({
-                    room: selectedRoom,
-                    time: time,
-                    date: datePicker.value,
-                    name: name,
-                    createdAt: now.toISOString() + Math.random().toString(36).substr(2, 5) // 고유 ID용 난수 추가
-                });
-            });
-
-            // 데이터를 브라우저에 저장
-            localStorage.setItem('microBioReservations', JSON.stringify(currentReservations));
-            
-            alert("성공적으로 예약되었습니다.");
-            
-            document.getElementById('userName').value = "";
-            selectedTimes = [];
-            updateBookBtn();
-            renderGrid();
-            renderHistory();
         };
 
-        // 예약 취소 함수 추가
-        window.cancelReservation = (createdAt) => {
+        // 5. 서버의 데이터 삭제 (취소)
+        window.cancelReservation = async (id) => {
             if(confirm("해당 예약을 취소하시겠습니까?")) {
-                currentReservations = currentReservations.filter(res => res.createdAt !== createdAt);
-                localStorage.setItem('microBioReservations', JSON.stringify(currentReservations));
-                
-                alert("취소 처리되었습니다.");
-                if(selectedRoom) renderGrid(); // 예약 현황 캘린더 업데이트
-                renderHistory(); // 하단 목록 업데이트
+                try {
+                    await deleteDoc(doc(db, "reservations", id));
+                    alert("취소 처리되었습니다.");
+                } catch (e) {
+                    alert("취소 중 오류가 발생했습니다.");
+                }
             }
         };
-
-        // 초기 히스토리 렌더링
-        renderHistory();
     </script>
-</body>
-</html>
